@@ -1,0 +1,1 @@
+[{"id":"case-a","facts":{"net_operating_income":"270000","annual_debt_service":"180000"},"expected_dscr":"1.5000","expected_risk":"LOW"},{"id":"case-b","facts":{"net_operating_income":"120000","annual_debt_service":"180000"},"expected_dscr":"0.6667","expected_risk":"HIGH"},{"id":"case-c","facts":{"revenue":"400000"},"expected_dscr":null,"expected_risk":"INSUFFICIENT_DATA"}]

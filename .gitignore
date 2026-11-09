@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.env
+*.db
+dist/
+node_modules/
+web/dist/
+*.tsbuildinfo
+.terraform/
+*.tfstate*
+evals/reports/*.json

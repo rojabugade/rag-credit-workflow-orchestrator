@@ -1,0 +1,114 @@
+name: creditflow
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: creditflow
+      POSTGRES_USER: creditflow
+      POSTGRES_PASSWORD: creditflow-local-only
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U creditflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:8.2-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: creditflow-local
+      MINIO_ROOT_PASSWORD: creditflow-local-secret
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["minio-data:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 creditflow-local creditflow-local-secret &&
+        mc mb --ignore-existing local/creditflow-documents &&
+        mc anonymous set none local/creditflow-documents
+  localstack:
+    image: localstack/localstack:4.9.2
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: us-east-1
+    ports: ["4566:4566"]
+    volumes: ["./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro"]
+  migrate:
+    build: {context: ., target: api}
+    env_file: .env
+    environment:
+      CREDITFLOW_DATABASE_URL: postgresql+asyncpg://creditflow:creditflow-local-only@postgres:5432/creditflow
+      CREDITFLOW_CHECKPOINT_DATABASE_URL: postgresql://creditflow:creditflow-local-only@postgres:5432/creditflow
+    command: ["/bin/sh", "-c", "alembic upgrade head && python scripts/setup_checkpoints.py && python scripts/bootstrap_local.py"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    build: {context: ., target: api}
+    env_file: .env
+    environment:
+      CREDITFLOW_DATABASE_URL: postgresql+asyncpg://creditflow:creditflow-local-only@postgres:5432/creditflow
+      CREDITFLOW_CHECKPOINT_DATABASE_URL: postgresql://creditflow:creditflow-local-only@postgres:5432/creditflow
+      CREDITFLOW_RUNTIME_BACKEND: postgres
+      CREDITFLOW_S3_ENDPOINT_URL: http://minio:9000
+      CREDITFLOW_SQS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: creditflow-local
+      AWS_SECRET_ACCESS_KEY: creditflow-local-secret
+    ports: ["8000:8000"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+      localstack: {condition: service_started}
+      minio-init: {condition: service_completed_successfully}
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 1G}
+  worker:
+    build: {context: ., target: worker}
+    env_file: .env
+    environment:
+      CREDITFLOW_DATABASE_URL: postgresql+asyncpg://creditflow:creditflow-local-only@postgres:5432/creditflow
+      CREDITFLOW_CHECKPOINT_DATABASE_URL: postgresql://creditflow:creditflow-local-only@postgres:5432/creditflow
+      CREDITFLOW_RUNTIME_BACKEND: postgres
+      CREDITFLOW_SQS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: creditflow-local
+      AWS_SECRET_ACCESS_KEY: creditflow-local-secret
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      localstack: {condition: service_started}
+  prometheus:
+    image: prom/prometheus:v3.7.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes: ["./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+  grafana:
+    image: grafana/grafana:12.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: local-grafana-only
+    volumes:
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+volumes:
+  postgres-data:
+  minio-data:

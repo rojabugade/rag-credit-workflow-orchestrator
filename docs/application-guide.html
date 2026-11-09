@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CreditFlow AI — Application Guide</title>
+  <style>
+    @page { size: A4; margin: 18mm; }
+    body { font-family: Arial, sans-serif; color: #17243a; font-size: 10.5pt; line-height: 1.45; }
+    h1 { color: #0d2847; font-size: 27pt; margin: 0 0 6pt; }
+    h2 { color: #155a91; font-size: 16pt; margin-top: 20pt; border-bottom: 1px solid #bfd0df; padding-bottom: 4pt; }
+    h3 { color: #234d70; font-size: 12pt; margin-top: 14pt; }
+    p, li { margin-top: 4pt; margin-bottom: 4pt; }
+    code { font-family: Courier, monospace; background: #eef3f7; padding: 1pt 3pt; }
+    pre { font-family: Courier, monospace; background: #12243a; color: white; padding: 10pt; font-size: 8.5pt; line-height: 1.35; }
+    table { width: 100%; border-collapse: collapse; margin: 8pt 0; }
+    th { background: #155a91; color: white; text-align: left; }
+    th, td { border: 1px solid #b9c7d5; padding: 6pt; }
+    .subtitle { color: #50667d; font-size: 14pt; margin-bottom: 20pt; }
+    .notice { background: #fff4cf; border-left: 4px solid #d49a00; padding: 9pt; }
+    .footer-note { color: #65798d; font-size: 8.5pt; }
+  </style>
+</head>
+<body>
+  <h1>CreditFlow AI</h1>
+  <div class="subtitle">Application Understanding Guide</div>
+  <p><b>Project:</b> Multi-Agent Credit Underwriting &amp; Risk Intelligence Platform</p>
+  <p><b>Purpose:</b> Help authorized human underwriters analyze commercial credit applications using deterministic calculations, evidence retrieval, validation, and explainable AI recommendations.</p>
+  <div class="notice"><b>Important:</b> CreditFlow does not autonomously approve or deny loans. Every recommendation requires an authorized human decision. All included examples and policies are synthetic.</div>
+
+  <h2>1. Start with the running application</h2>
+  <ul>
+    <li>Dashboard: <code>http://127.0.0.1:5173</code></li>
+    <li>API: <code>http://127.0.0.1:8000</code></li>
+    <li>OpenAPI documentation: <code>http://127.0.0.1:8000/docs</code></li>
+  </ul>
+
+  <h2>2. Business process</h2>
+  <ol>
+    <li>Create a commercial credit case.</li>
+    <li>Upload financial and collateral documents.</li>
+    <li>Extract financial facts with source references.</li>
+    <li>Calculate ratios using deterministic Decimal functions.</li>
+    <li>Retrieve effective institutional policies.</li>
+    <li>Apply versioned risk rules.</li>
+    <li>Verify calculations, claims, and citations.</li>
+    <li>Generate an underwriting recommendation and report.</li>
+    <li>Pause the workflow for an authorized human reviewer.</li>
+    <li>Record the reviewer action and append an integrity-protected audit event.</li>
+  </ol>
+
+  <h2>3. Demonstration cases</h2>
+  <table>
+    <tr><th>Case</th><th>Input</th><th>Expected behavior</th></tr>
+    <tr><td>A — Stable</td><td><code>case_a_financials.csv</code></td><td>Low risk; proceed to human review with supporting evidence.</td></tr>
+    <tr><td>B — Leveraged</td><td><code>case_b_financials.csv</code></td><td>High risk; low coverage, leverage, liquidity, or collateral warnings.</td></tr>
+    <tr><td>C — Incomplete</td><td><code>case_c_incomplete.csv</code></td><td>Insufficient data; request missing information and escalate.</td></tr>
+  </table>
+  <p>Create a case in the dashboard, upload one of the files from <code>sample_data/documents/</code>, start analysis, inspect metrics and citations, submit a review, and open the audit timeline.</p>
+
+  <h2>4. End-to-end architecture</h2>
+  <pre>React analyst dashboard
+          |
+          v
+FastAPI REST API
+    |       |       |
+    v       v       v
+Postgres  Redis   S3 documents
+    |
+    v
+SQS job queue ---> ECS worker ---> LangGraph
+                                  |   |   |
+                               Finance Risk Compliance
+                                  \   |   /
+                                  Verification
+                                       |
+                                    Report
+                                       |
+                                Human review interrupt
+                                       |
+                                Audit event and END</pre>
+
+  <h2>5. Follow one request through the code</h2>
+  <h3>API entry point</h3>
+  <p><code>src/creditflow/main.py</code> creates FastAPI, middleware, tracing, routes, health checks, metrics, and standardized errors.</p>
+  <h3>REST endpoints</h3>
+  <p><code>src/creditflow/api/v1/routes.py</code> contains case creation, upload, asynchronous analysis, job status, analysis, reports, human review, audit history, and policy search.</p>
+  <h3>Local application service</h3>
+  <p><code>src/creditflow/services/runtime.py</code> connects the credential-free local demonstration. It creates cases, extracts CSV facts, launches LangGraph in the background, records reports, resumes human review, and appends audit events.</p>
+
+  <h2>6. LangGraph workflow</h2>
+  <p>Read <code>workflows/state.py</code>, <code>workflows/graph.py</code>, and <code>docs/langgraph.md</code>.</p>
+  <pre>Load application -> Validate documents -> Extract facts
+      -> Validate extraction -> Retrieve policies
+      -> Financial analysis
+           +-> Risk analysis --------+
+           +-> Compliance analysis --+-> Verification
+                                          | valid
+                                          v
+                                     Generate report
+                                          |
+                                    Human interrupt
+                                          |
+                                  Command(resume=review)
+                                          |
+                                     Audit and END</pre>
+  <p>Verification uses bounded correction attempts. Unsupported citations are removed rather than fabricated. An unresolved failure produces an insufficient-data recommendation instead of silently continuing.</p>
+
+  <h2>7. Financial correctness</h2>
+  <p><code>risk/calculations.py</code> owns authoritative arithmetic. Values use <code>Decimal</code> and documented rounding. Every metric contains its formula, input values, source IDs, result, validation status, and missing inputs.</p>
+  <p>Examples include DSCR, current ratio, debt-to-equity, loan-to-value, and operating margin. The LLM may explain these results but cannot replace their deterministic calculation.</p>
+
+  <h2>8. Document ingestion</h2>
+  <p><code>ingestion/extractors.py</code> validates filename, MIME type, magic bytes, and size; calculates SHA-256 checksums; extracts PDF or CSV content; reports OCR requirements; identifies document types; and produces page-preserving chunks with immutable citation IDs.</p>
+
+  <h2>9. Hybrid retrieval and citations</h2>
+  <p><code>retrieval/hybrid.py</code> combines semantic and keyword results with Reciprocal Rank Fusion, reranks a candidate set, builds bounded grounded context, and validates source IDs. PostgreSQL migrations provide pgvector, HNSW, full-text GIN, policy metadata indexes, embedding versioning, and tenant row-level security.</p>
+
+  <h2>10. LLM integration</h2>
+  <p><code>llm/providers/openai_responses.py</code> uses the OpenAI Responses API with structured Pydantic outputs. It handles incomplete responses, refusals, malformed output, and provider failures. The deprecated Assistants API is not used.</p>
+  <p><code>llm/providers/mock.py</code> supports deterministic offline execution. <code>llm/routing.py</code> permits fallback only to providers with approved structured-output, function-calling, and sensitive-data capabilities.</p>
+
+  <h2>11. Security and auditability</h2>
+  <ul>
+    <li>OIDC signature, issuer, audience, expiry, subject, JWKS, tenant, and role validation.</li>
+    <li>Tenant identity comes from verified authentication, not request payloads.</li>
+    <li>PostgreSQL row-level security provides defense in depth.</li>
+    <li>Uploaded and retrieved text is untrusted and cannot authorize tools.</li>
+    <li>Tools are allowlisted; the LLM cannot execute arbitrary SQL or code.</li>
+    <li>Case versions prevent stale human review actions.</li>
+    <li>Audit events are append-only and SHA-256 hash chained.</li>
+  </ul>
+
+  <h2>12. Recommended reading order</h2>
+  <ol>
+    <li><code>README.md</code></li>
+    <li><code>docs/architecture.md</code></li>
+    <li><code>docs/langgraph.md</code></li>
+    <li><code>docs/retrieval.md</code></li>
+    <li><code>docs/database.md</code></li>
+    <li><code>docs/security.md</code></li>
+    <li><code>docs/interview-guide.md</code></li>
+    <li><code>PROGRESS.md</code></li>
+  </ol>
+
+  <h2>13. Verification commands</h2>
+  <pre>uv run ruff format --check .
+uv run ruff check .
+uv run mypy src
+uv run pytest --cov=creditflow
+uv run python evals/run_evaluation.py
+uv run pip-audit
+npm --prefix web run build</pre>
+
+  <h2>14. Current readiness boundary</h2>
+  <p>The local mock-mode vertical slice is executable. Production deployment still requires complete PostgreSQL/S3/SQS composition wiring, live identity and provider validation, Docker and AWS staging tests, representative load testing, and institutional security, privacy, fair-lending, legal, and model-risk approvals.</p>
+  <p class="footer-note">Generated from the CreditFlow AI repository documentation. This guide contains no customer data and makes no regulatory certification or achieved enterprise-performance claim.</p>
+</body>
+</html>

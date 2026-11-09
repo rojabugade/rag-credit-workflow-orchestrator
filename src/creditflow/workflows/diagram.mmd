@@ -1,0 +1,14 @@
+flowchart TD
+  S((START)) --> L[Load Application] --> V[Validate Documents] --> E[Extract Financial Data]
+  E --> VE[Validate Extracted Information] --> P[Retrieve Policies and Evidence]
+  P --> F[Financial Analysis]
+  F --> R[Credit Risk Analysis]
+  F --> C[Compliance Analysis]
+  R --> X[Verification]
+  C --> X
+  X -->|valid| G[Generate Report]
+  X -->|invalid| B[Bounded Correction]
+  B --> X
+  X -->|retry exhausted| G
+  G --> H{{Human Review Interrupt}}
+  H -->|accept / reject / revise| A[Append Audit Event] --> Z((END))
